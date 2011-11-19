@@ -1,11 +1,15 @@
 import sys
 import json
 import time
-import socks
-import httplib2
+from network import Requester
 from persistence import Collector
 
 class TweetDumper(object):
+    """
+    This class is able to retrieve tweets from the user. If you need to update
+    a preexisting database just run with page=0 and interrupt the script as
+    soon you see Skipping warning.
+    """
     ARGS = ('user', 'page')
     DESC = "Retrieve tweets of <user> starting from <page>"
 
@@ -16,23 +20,17 @@ class TweetDumper(object):
     def __init__(self):
         self.url = self.URL
         self.collector = Collector()
-        self.invoker = httplib2.Http(
-            proxy_info=httplib2.ProxyInfo(socks.PROXY_TYPE_SOCKS5,
-                                          'localhost', 9050))
+        self.invoker = Requester('proxylist')
 
     def dump(self, politician, page=1):
         try:
+            page = int(page)
             while True:
                 print("Retrieving tweets at page {:d}".format(page))
 
                 response, content = self.invoker.request(
-                        self.url.format(politician, page),
-                        'GET', headers={'User-Agent:': 'Google Chrome'})
-
-                if response['status'] != '200':
-                    print self.url.format(politician, page)
-                    print("Error at page {:d}. Limit exceeded".format(page))
-                    break
+                    self.url.format(politician, page)
+                )
 
                 collection = json.loads(content)
 
@@ -46,6 +44,7 @@ class TweetDumper(object):
         finally:
             print("Committing changes to the database")
             self.collector.save()
+            self.invoker.save('proxylist')
 
 
 class RetweetDumper(TweetDumper):
@@ -64,37 +63,37 @@ class FollowerDumper(TweetDumper):
           "user_id={:d}&cursor={:d}&stringify_ids=true"
 
     def dump(self, politician, cursor=-1):
+        cursor = int(cursor)
+
         if isinstance(politician, basestring):
             politician = self.collector.get_user_id(politician)
 
         print("Downloading followers of {:d}".format(politician))
 
-        while True:
-            response, content = self.invoker.request(
-                    self.url.format(politician, cursor),
-                    'GET', headers={'User-Agent:': 'Google Chrome'})
+        try:
+            while True:
+                response, content = self.invoker.request(
+                    self.url.format(politician, cursor)
+                )
 
-            if response['status'] != '200':
-                print(self.url.format(politician, cursor))
-                print("Error at cursor {:d}. Limit exceeded.".format(cursor))
-                print("Sleeping 2 seconds. Please change tor identity")
-                time.sleep(2)
-                continue
+                if response['status'] == '401':
+                    # User with protected tweets.
+                    break
 
-            body = json.loads(content)
+                body = json.loads(content)
+                ids = body['ids']
 
-            ids = body['ids']
+                if len(ids) == 0:
+                    break
 
-            if len(ids) == 0:
-                break
+                cursor = int(body['next_cursor_str'])
+                self.store(politician, ids)
 
-            cursor = int(body['next_cursor_str'])
-            self.store(str(politician), ids)
-
-            print("Saving {:d} connections".format(len(ids)))
-
-        print("Committing changes to the database")
-        self.collector.save()
+                print("Saving {:d} connections".format(len(ids)))
+        finally:
+            print("Committing changes to the database")
+            self.collector.save()
+            self.invoker.save('proxylist')
 
     def store(self, politician, ids):
         self.collector.save_followers(politician, ids)
@@ -105,6 +104,7 @@ class SecondLevelDumper(FollowerDumper):
            "from <2nd-useridx>"
 
     def dump(self, politician, page=-1):
+        page = int(page)
         pid = self.collector.get_user_id(politician)
         self.pid = pid
 
@@ -112,8 +112,8 @@ class SecondLevelDumper(FollowerDumper):
             if idx < page:
                 continue
 
-            print("Dumping user at index {:d}".format(page))
-            FollowerDumper.dump(self, int(uid), -1)
+            print("Dumping user at index {:d}".format(idx))
+            FollowerDumper.dump(self, uid, -1)
 
     def store(self, dst_uid, ids):
         # Here we need to save only followers which are already present
@@ -134,40 +134,32 @@ class UserLookups(TweetDumper):
     URL = "http://api.twitter.com/1/users/lookup.json?user_id={:s}"
 
     def dump(self):
-        tmplist = []
-        for uid in self.collector.get_missing_uid():
-            tmplist.append(uid)
-
-            if len(tmplist) < 100:
-                continue
-
-            self.retrieve_list(tmplist)
+        try:
             tmplist = []
+            for uid in self.collector.get_missing_uid():
+                tmplist.append(uid)
 
-        if tmplist:
-            self.retrieve_list(tmplist)
+                if len(tmplist) < 100:
+                    continue
 
-        print("Committing changes to the database")
-        self.collector.save()
+                self.retrieve_list(tmplist)
+                tmplist = []
+
+            if tmplist:
+                self.retrieve_list(tmplist)
+        finally:
+            print("Committing changes to the database")
+            self.collector.save()
+            self.invoker.save('proxylist')
 
     def retrieve_list(self, tmplist):
-        while True:
-            response, content = self.invoker.request(
-                    self.url.format(','.join(tmplist)),
-                    'GET', headers={'User-Agent:': 'Google Chrome'})
+        response, content = self.invoker.request(
+                self.url.format(','.join(map(str, tmplist))), 'GET')
 
-            if response['status'] != '200':
-                #print self.url.format(','.join(tmplist))
-                print("Error at while retrieving user info. Limit exceeded.")
-                print("Sleeping 2 seconds. Please change tor identity")
-                time.sleep(2)
-                continue
+        collection = json.loads(content)
+        self.collector.save_user_infos(collection)
 
-            collection = json.loads(content)
-            self.collector.save_user_infos(collection)
-            break
-
-            print("Saving {:d} profiles".format(len(collection)))
+        print("Saving {:d} profiles".format(len(collection)))
 
 if __name__ == "__main__":
     tools = {

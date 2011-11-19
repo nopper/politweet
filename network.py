@@ -160,14 +160,35 @@ class Requester(object):
         while True:
             try:
                 response, content = invoker.request(url, meth, headers=headers)
-                return callback(response, content)
+
+                # Let's try to respect the limits
+
+                if 'x-ratelimit-limit' in response and \
+                   'x-ratelimit-remaining' in response:
+                    maxreq = int(response['x-ratelimit-limit'])
+                    remain = int(response['x-ratelimit-remaining'])
+
+                    self.current.requests = maxreq - remain
+                    self.current.maxreq = maxreq
+
+                    if response['status'] == '400' and remain == 0:
+                        print("Ratelimit met. Cycling next proxy")
+                        invoker = self.get_invoker()
+                        continue
+
+                if 'x-ratelimit-reset' in response:
+                    reset = int(response['x-ratelimit-reset'])
+                    diff = max(reset - time.time(), 0)
+                    self.current.mtime = diff
+
+                return response, content
             except Exception, exc:
                 attempt += 1
 
                 print("[{:d}/{:d}] Ignoring exception {:s}: waiting 2 secs " \
                       "before next attempt".format(attempt, self.max_attempt,
                       str(exc)))
-                time.sleep(0.2)
+                time.sleep(2)
 
                 if attempt >= self.max_attempt:
                     attempt = 0

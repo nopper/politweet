@@ -5,21 +5,17 @@ from time import mktime, strptime
 
 tcreation = """
 CREATE TABLE tweets(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-
     time INTEGER,
     rtcount INTEGER,
     uid INTEGER,
-    tid INTEGER UNIQUE,
+    tid INTEGER PRIMARY KEY,
     text TEXT,
     geo TEXT
 );
 CREATE TABLE retweets(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-
     rtime INTEGER,
     ruid INTEGER,
-    rtid INTEGER UNIQUE,
+    rtid INTEGER PRIMARY KEY,
     rtext TEXT,
     rgeo TEXT,
 
@@ -30,14 +26,12 @@ CREATE TABLE retweets(
     ogeo TEXT
 );
 CREATE TABLE users(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    uid TEXT UNIQUE,
+    uid INTEGER PRIMARY KEY,
     screen_name TEXT UNIQUE
 );
 CREATE TABLE followers(
-    src_uid TEXT,
-    dst_uid TEXT,
+    src_uid INTEGER,
+    dst_uid INTEGER,
     PRIMARY KEY(src_uid, dst_uid)
 );
 """
@@ -47,8 +41,8 @@ CREATE TABLE pages(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
 
     type INTEGER,
-    uid TEXT,
-    tid TEXT UNIQUE,
+    uid INTEGER,
+    tid INTEGER UNIQUE,
     json TEXT
 );
 """
@@ -84,9 +78,16 @@ class Collector(object):
 
         for row in self.tcursor:
             try:
-                return int(row[0])
+                return row[0]
             except:
                 return -1
+
+    def is_following(self, src_uid, dst_uid):
+        for row in self.tcursor.execute(
+            "SELECT src_uid FROM followers WHERE src_uid=? AND dst_uid=?",
+            (src_uid, dst_uid)):
+            return True
+        return False
 
     def get_missing_uid(self):
         cursor = self.tweets.cursor()
@@ -99,7 +100,7 @@ class Collector(object):
     def get_followers_for(self, uid):
         cursor = self.tweets.cursor()
         for row in cursor.execute(
-            "SELECT src_uid FROM followers WHERE dst_uid=?", (str(uid), )):
+            "SELECT src_uid FROM followers WHERE dst_uid=?", (uid, )):
             yield (row[0])
 
     def save_followers(self, leader, ids):
@@ -115,7 +116,7 @@ class Collector(object):
         for user in jsonobj:
             self.tcursor.execute(
                 "INSERT INTO users(uid, screen_name) VALUES (?, ?)",
-                (user['id_str'], user['screen_name'])
+                (int(user['id_str']), user['screen_name'])
             )
 
     def save_json_obj(self, jsonobj, type=0):
@@ -126,8 +127,8 @@ class Collector(object):
             try:
                 self.dcursor.execute(
                     "INSERT INTO pages(type, uid, tid, json) VALUES(?,?,?,?)",
-                    (type, obj['user']['id_str'],
-                     obj['id_str'], json.dumps(obj))
+                    (type, int(obj['user']['id_str']),
+                     int(obj['id_str']), json.dumps(obj))
                 )
             except Exception:
                 print("Skipping tid={:s}. Already present".format(
@@ -142,21 +143,25 @@ class Collector(object):
 
         for tweet in jsonobj:
             rtcount = tweet['retweet_count']
-            uid     = tweet['user']['id_str']
-            tid     = tweet['id_str']
-            txt     = tweet['text'].encode('utf-8')
+            uid     = int(tweet['user']['id_str'])
+            tid     = int(tweet['id_str'])
+            txt     = tweet['text']
             geo     = json.dumps(tweet['geo'])
-            time    = mktime(strptime(tweet['created_at'],
-                                      '%a %b %d %H:%M:%S +0000 %Y'))
+            time    = int(mktime(strptime(tweet['created_at'],
+                                          '%a %b %d %H:%M:%S +0000 %Y')))
+
+            if isinstance(rtcount, basestring):
+                rtcount = 101
 
             try:
                 self.tcursor.execute(
                     "INSERT INTO tweets(time, rtcount, uid, tid, text, geo) " \
                     "VALUES (?, ?, ?, ?, ?, ?)",
-                    (time, rtcount, uid, tid, txt, time, geo)
+                    (time, rtcount, uid, tid, txt, geo)
                 )
-            except:
-                print("Skipping tweet. tid={:s} already present".format(tid))
+            except Exception, exc:
+                print exc
+                print("Skipping tweet. tid={:d} already present".format(tid))
 
             self.tcursor.execute(
                 "INSERT OR REPLACE INTO users(uid, screen_name) " \
@@ -169,15 +174,15 @@ class Collector(object):
         self.save_json_obj(jsonobj, type=1)
 
         for tweet in jsonobj:
-            ruid  = tweet['user']['id_str']
-            rtid  = tweet['id_str']
+            ruid  = int(tweet['user']['id_str'])
+            rtid  = int(tweet['id_str'])
             rtext = tweet['text']
             rgeo  = json.dumps(tweet['geo'])
             rtime = mktime(strptime(tweet['created_at'],
                                       '%a %b %d %H:%M:%S +0000 %Y'))
 
-            ouid  = tweet['retweeted_status']['user']['id_str']
-            otid  = tweet['retweeted_status']['id_str']
+            otid  = int(tweet['retweeted_status']['id_str'])
+            ouid  = int(tweet['retweeted_status']['user']['id_str'])
             otext = tweet['retweeted_status']['text']
             ogeo  = json.dumps(tweet['retweeted_status']['geo'])
             otime = mktime(strptime(tweet['retweeted_status']['created_at'],
@@ -193,7 +198,7 @@ class Collector(object):
                 )
 
             except Exception:
-                print("Skipping tweet. rtid={:s} already present".format(rtid))
+                print("Skipping tweet. rtid={:d} already present".format(rtid))
 
             # Also update the uid <=> screen_name mappings
 
