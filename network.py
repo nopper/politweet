@@ -1,0 +1,262 @@
+import time
+import socks
+from random import choice
+from httplib2 import Http, ProxyInfo
+
+# Also ncsa-mosaic for the lulz
+AGENTS="""Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10.5; en-US; rv:1.9.1b3) Gecko/20090305 Firefox/3.1b3 GTB5
+Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10.5; ko; rv:1.9.1b2) Gecko/20081201 Firefox/3.1b2
+Mozilla/5.0 (X11; U; SunOS sun4u; en-US; rv:1.9b5) Gecko/2008032620 Firefox/3.0b5
+Mozilla/5.0 (X11; U; Linux x86_64; en-US; rv:1.8.1.12) Gecko/20080214 Firefox/2.0.0.12
+Mozilla/5.0 (Windows; U; Windows NT 5.1; cs; rv:1.9.0.8) Gecko/2009032609 Firefox/3.0.8
+Mozilla/5.0 (X11; U; OpenBSD i386; en-US; rv:1.8.0.5) Gecko/20060819 Firefox/1.5.0.5
+Mozilla/5.0 (Windows; U; Windows NT 5.0; es-ES; rv:1.8.0.3) Gecko/20060426 Firefox/1.5.0.3
+Mozilla/5.0 (Windows; U; WinNT4.0; en-US; rv:1.7.9) Gecko/20050711 Firefox/1.0.5
+Mozilla/5.0 (Windows; Windows NT 6.1; rv:2.0b2) Gecko/20100720 Firefox/4.0b2
+Mozilla/5.0 (X11; Linux x86_64; rv:2.0b4) Gecko/20100818 Firefox/4.0b4
+Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.2) Gecko/20100308 Ubuntu/10.04 (lucid) Firefox/3.6 GTB7.1
+Mozilla/5.0 (Windows NT 6.1; WOW64; rv:2.0b7) Gecko/20101111 Firefox/4.0b7
+Mozilla/5.0 (Windows NT 6.1; WOW64; rv:2.0b8pre) Gecko/20101114 Firefox/4.0b8pre
+Mozilla/5.0 (X11; Linux x86_64; rv:2.0b9pre) Gecko/20110111 Firefox/4.0b9pre
+Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:2.0b9pre) Gecko/20101228 Firefox/4.0b9pre
+Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:2.2a1pre) Gecko/20110324 Firefox/4.2a1pre
+Mozilla/5.0 (X11; U; Linux amd64; rv:5.0) Gecko/20100101 Firefox/5.0 (Debian)
+Mozilla/5.0 (Windows NT 6.1; WOW64; rv:6.0a2) Gecko/20110613 Firefox/6.0a2
+Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/525.19 (KHTML, like Gecko) Chrome/1.0.154.53 Safari/525.19
+Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/525.19 (KHTML, like Gecko) Chrome/1.0.154.36 Safari/525.19
+Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/534.10 (KHTML, like Gecko) Chrome/7.0.540.0 Safari/534.10
+Mozilla/5.0 (Windows; U; Windows NT 5.2; en-US) AppleWebKit/534.4 (KHTML, like Gecko) Chrome/6.0.481.0 Safari/534.4
+Mozilla/5.0 (Macintosh; U; Intel Mac OS X; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.86 Safari/533.4
+Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/532.2 (KHTML, like Gecko) Chrome/4.0.223.3 Safari/532.2
+Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/532.0 (KHTML, like Gecko) Chrome/4.0.201.1 Safari/532.0
+Mozilla/5.0 (Windows; U; Windows NT 5.2; en-US) AppleWebKit/532.0 (KHTML, like Gecko) Chrome/3.0.195.27 Safari/532.0
+Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/530.5 (KHTML, like Gecko) Chrome/2.0.173.1 Safari/530.5
+Mozilla/5.0 (Windows; U; Windows NT 5.2; en-US) AppleWebKit/534.10 (KHTML, like Gecko) Chrome/8.0.558.0 Safari/534.10
+Mozilla/5.0 (X11; U; Linux x86_64; en-US) AppleWebKit/540.0 (KHTML,like Gecko) Chrome/9.1.0.0 Safari/540.0
+Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/534.14 (KHTML, like Gecko) Chrome/9.0.600.0 Safari/534.14
+Mozilla/5.0 (X11; U; Windows NT 6; en-US) AppleWebKit/534.12 (KHTML, like Gecko) Chrome/9.0.587.0 Safari/534.12
+Mozilla/5.0 (X11; U; Linux x86_64; en-US) AppleWebKit/534.10 (KHTML, like Gecko) Ubuntu/10.10 Chromium/8.0.552.237 Chrome/8.0.552.237 Safari/534.10
+Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/534.13 (KHTML, like Gecko) Chrome/9.0.597.0 Safari/534.13
+Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/534.16 (KHTML, like Gecko) Chrome/10.0.648.11 Safari/534.16
+Mozilla/5.0 (Windows; U; Windows NT 6.0; en-US) AppleWebKit/534.20 (KHTML, like Gecko) Chrome/11.0.672.2 Safari/534.20
+Mozilla/5.0 (Windows NT 6.0) AppleWebKit/535.1 (KHTML, like Gecko) Chrome/14.0.792.0 Safari/535.1
+Mozilla/5.0 (Windows NT 5.1) AppleWebKit/535.2 (KHTML, like Gecko) Chrome/15.0.872.0 Safari/535.2
+Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/535.7 (KHTML, like Gecko) Chrome/16.0.912.36 Safari/535.7
+Mozilla/4.0 (compatible; MSIE 5.0; Windows NT;)
+Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 5.1; SV1; .NET CLR 2.0.50727)
+Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.0; Trident/4.0; GTB5; SLCC1; .NET CLR 2.0.50727; Media Center PC 5.0; .NET CLR 3.0.04506; InfoPath.2; OfficeLiveConnector.1.3; OfficeLivePatch.0.0)
+Mozilla/4.0 (Mozilla/4.0; MSIE 7.0; Windows NT 5.1; FDM; SV1; .NET CLR 3.0.04506.30)
+Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1; .NET CLR 1.0.3705; .NET CLR 1.1.4322; Media Center PC 4.0; .NET CLR 2.0.50727)
+Mozilla/4.0 (compatible; MSIE 5.0b1; Mac_PowerPC)
+Mozilla/2.0 (compatible; MSIE 4.0; Windows 98)
+Mozilla/4.0 (compatible; MSIE 5.01; Windows NT)
+Mozilla/4.0 (compatible; MSIE 5.23; Mac_PowerPC)
+Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1; GTB6; Ant.com Toolbar 1.6; MSIECrawler)
+Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.0; Trident/4.0; SLCC1; .NET CLR 2.0.50727; .NET CLR 1.1.4322; InfoPath.2; .NET CLR 3.5.21022; .NET CLR 3.5.30729; MS-RTC LM 8; OfficeLiveConnector.1.4; OfficeLivePatch.1.3; .NET CLR 3.0.30729)
+Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)
+Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; Media Center PC 6.0; InfoPath.3; MS-RTC LM 8; Zune 4.7)
+Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0)
+Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; WOW64; Trident/6.0)
+Opera/5.11 (Windows 98; U) [en]
+Mozilla/4.0 (compatible; MSIE 5.0; Windows 98) Opera 5.12 [en]
+Opera/6.0 (Windows 2000; U) [fr]
+Mozilla/4.0 (compatible; MSIE 5.0; Windows NT 4.0) Opera 6.01 [en]
+Opera/7.03 (Windows NT 5.0; U) [en]
+Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1) Opera 7.10 [en]
+Opera/9.02 (Windows XP; U; ru)
+Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; en) Opera 9.24
+Opera/9.51 (Macintosh; Intel Mac OS X; U; en)
+Opera/9.70 (Linux i686 ; U; en) Presto/2.2.1
+Opera/9.80 (Windows NT 5.1; U; cs) Presto/2.2.15 Version/10.00
+Opera/9.80 (Windows NT 6.1; U; sv) Presto/2.7.62 Version/11.01
+Opera/9.80 (Windows NT 6.1; U; en-GB) Presto/2.7.62 Version/11.00
+Opera/9.80 (Windows NT 6.1; U; zh-tw) Presto/2.7.62 Version/11.01
+Opera/9.80 (Windows NT 6.0; U; en) Presto/2.8.99 Version/11.10
+Opera/9.80 (X11; Linux i686; U; ru) Presto/2.8.131 Version/11.11
+Mozilla/5.0 (iPad; U; CPU OS 4_2_1 like Mac OS X; ja-jp) AppleWebKit/533.17.9 (KHTML, like Gecko) Version/5.0.2 Mobile/8C148 Safari/6533.18.5
+Mozilla/5.0 (iPad; U; CPU OS 3_2 like Mac OS X; es-es) AppleWebKit/531.21.10 (KHTML, like Gecko) Version/4.0.4 Mobile/7B360 Safari/531.21.10
+NCSA_Mosaic/2.0 (Windows 3.1)
+NCSA_Mosaic/3.0 (Windows 95)
+NCSA_Mosaic/2.6 (X11; SunOS 4.1.3 sun4m)
+NCSA Mosaic/1.0 (X11;SunOS 4.1.4 sun4m)"""
+
+# The list of HTTP proxy will contain something similar
+# 2:3600:socks5:9050:localhost
+# 2 = maximum requests
+# 3600 = time to wait up reached the threshold
+# socks5 = protocol
+# 9050 = port
+# then host
+
+class ServerInfo(object):
+    def __init__(self, ctime, maxreq, mtime, proto, port, host):
+        self.host = host.strip()
+        self.proto = proto
+        self.requests = 0
+        self.fails = 0
+
+        self.ctime  = int(ctime)
+        self.maxreq = int(maxreq)
+        self.mtime  = int(mtime)
+        self.port   = int(port)
+
+    def __cmp__(self, other):
+        return cmp(
+            (self.requests, self.mtime - self.ctime,
+             self.maxreq, self.mtime, self.fails),
+
+            (other.requests, other.mtime - other.ctime,
+             other.maxreq, self.mtime, self.fails)
+        )
+
+    def __repr__(self):
+        return "<{:s}>".format(str(self))
+
+    def __str__(self):
+        return "{:s}:{:d} ({:s})".format(self.host, self.port, self.proto)
+
+class Requester(object):
+    def __init__(self, flist, max_request=10, max_attempt=3):
+        self.servers = []
+        self.current = None
+        self.agents = AGENTS.splitlines()
+
+        self.invoker = None
+        self.current = None
+        self.cur_request = 0
+        self.max_request = max_request
+        self.max_attempt = max_attempt
+
+        self.selected = []
+        self.selection = []
+
+        print("Loading proxies:")
+
+        for line in open(flist).readlines():
+            ctime, maxreq, mtime, proto, port, host = line.split(':', 5)
+
+            info = ServerInfo(ctime, maxreq, mtime, proto, port, host)
+            self.servers.append(info)
+            self.selection.append(info)
+
+            print(" => {:s}".format(str(info)))
+
+        print("{:d} proxies loaded.".format(len(self.servers)))
+        print("{:d} user agents loaded.".format(len(self.agents)))
+
+    ###
+
+    def req(self, url, meth, callback, headers=None):
+        invoker = self.get_invoker()
+
+        if headers is None:
+            headers = {}
+
+        if 'User-Agent' not in headers:
+            headers['User-Agent'] = choice(self.agents)
+
+        attempt = 0
+
+        while True:
+            try:
+                response, content = invoker.request(url, meth, headers=headers)
+                return callback(response, content)
+            except Exception, exc:
+                attempt += 1
+
+                print("[{:d}/{:d}] Ignoring exception {:s}: waiting 2 secs " \
+                      "before next attempt".format(attempt, self.max_attempt,
+                      str(exc)))
+                time.sleep(0.2)
+
+                if attempt >= self.max_attempt:
+                    attempt = 0
+
+                    print("Marking {:s} proxy as saturated"
+                          .format(str(self.current)))
+
+                    self.current.requests = self.current.maxreq
+                    self.current.fails += 1
+
+                    invoker = self.get_invoker()
+
+                continue
+
+    def get_invoker(self, force_new=False):
+        if force_new:
+            print("New invoker required. Cycling next proxy")
+            return self.get_next_invoker()
+
+        if self.current:
+            balance_limit = self.cur_request > self.max_request
+            api_limit = self.current.requests >= self.current.maxreq
+
+            if balance_limit:
+                print("Balance Limit met. Cycling next proxy")
+                return self.get_next_invoker()
+            if api_limit:
+                print("API Limit met. Cycling next proxy")
+                return self.get_next_invoker()
+
+            self.current.ctime = time.time()
+            self.current.requests += 1
+            self.cur_request += 1
+
+            return self.invoker
+
+        return self.get_next_invoker()
+
+    def get_next_invoker(self):
+        if not self.selection:
+            self.selection = list(self.selected)
+            self.selected = []
+
+        self.selection.sort()
+        self.current = self.selection.pop(0)
+        self.selected.append(self.current)
+        self.cur_request = 0
+
+        tgt = self.current
+        print("Switching to {:s}".format(str(tgt)))
+
+        if tgt.requests >= tgt.maxreq:
+            diff = int(tgt.mtime - (time.time() - tgt.ctime))
+
+            if diff > 0:
+                print("Sleeping {:d} secs until expiration of ban"
+                      .format(diff))
+                time.sleep(diff + 1)
+                tgt.requests = 0
+
+        tgt.ctime = int(time.time())
+
+        # Create the invoker
+        if tgt.proto.lower() == 'socks5':
+            type = socks.PROXY_TYPE_SOCKS5
+        else:
+            type = socks.PROXY_TYPE_HTTP
+
+        self.invoker = Http(proxy_info=ProxyInfo(type, tgt.host, tgt.port))
+
+        return self.invoker
+
+    def save(self, flist):
+        f = open(flist, 'w+')
+        for server in self.servers:
+            f.write("%d:%d:%d:%s:%d:%s\n" % (
+                server.ctime,
+                server.maxreq,
+                server.mtime,
+                server.proto,
+                server.port,
+                server.host
+            ))
+        f.close()
+
+if __name__ == "__main__":
+    def call(response, content):
+        print response
+        print content
+
+    r = Requester("proxylist")
+    r.req("http://www.google.it", 'GET', call)
