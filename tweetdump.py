@@ -42,7 +42,7 @@ class TweetDumper(object):
 
                 collection = json.loads(content)
 
-                if response.code == 401 or len(collection) == 0:
+                if len(collection) == 0:
                     break
 
                 meth = getattr(self.collector, self.METHOD)

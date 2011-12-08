@@ -64,7 +64,7 @@ class TweetDumper(object):
 
                 collection = json.loads(content)
 
-                if len(collection) == 0:
+                if response.code == 401 or len(collection) == 0:
                     break
 
                 self.dumpfile.write(content + "\n")
