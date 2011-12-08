@@ -1,6 +1,6 @@
 import time
 from random import choice
-from urllib2 import urlopen, Request
+from urllib2 import urlopen, Request, HTTPError
 
 # Also ncsa-mosaic for the lulz
 AGENTS="""Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10.5; en-US; rv:1.9.1b3) Gecko/20090305 Firefox/3.1b3 GTB5
@@ -95,10 +95,15 @@ class Requester(object):
 
         while True:
             try:
-                response = urlopen(Request(url, headers=headers))
+                try:
+                    response = urlopen(Request(url, headers=headers))
 
-                content = response.read()
-                headers = response.info()
+                    content = response.read()
+                    headers = response.info()
+
+                except HTTPError, response:
+                    content = response.read()
+                    headers = response.info()
 
                 # Let's try to respect the limits
                 if headers.getheader('x-ratelimit-limit') and \
