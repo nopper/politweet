@@ -14,8 +14,9 @@ class TweetDumper(object):
     DESC = "Retrieve tweets of <user> starting from <page>"
 
     METHOD = 'save_tweet'
-    URL = "http://twitter.com/statuses/user_timeline/" \
-          "{:s}.json?page={:d}&count=100"
+
+    URL = "http://api.twitter.com/1/statuses/user_timeline.json?" \
+          "&count=200&page={:d}"
 
     def __init__(self):
         self.url = self.URL
@@ -25,11 +26,18 @@ class TweetDumper(object):
     def dump(self, politician, page=1):
         try:
             page = int(page)
+            url = self.url
+
+            if politician.isdigit():
+                url += '&user_id={:s}'
+            else:
+                url += '&screen_name={:s}'
+
             while True:
                 print("Retrieving tweets at page {:d}".format(page))
 
                 response, content = self.invoker.request(
-                    self.url.format(politician, page)
+                    url.format(page, politician)
                 )
 
                 collection = json.loads(content)
@@ -52,7 +60,7 @@ class RetweetDumper(TweetDumper):
     METHOD = 'save_retweet'
 
     URL = "http://api.twitter.com/1/statuses/retweeted_by_user.json" \
-          "?screen_name={:s}&count=100&page={:d}"
+          "?count=100&page={:d}"
 
 class FollowerDumper(TweetDumper):
     ARGS = ('user', 'cursor')

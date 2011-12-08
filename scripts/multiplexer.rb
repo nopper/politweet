@@ -1,3 +1,5 @@
+#!/usr/bin/env ruby
+
 require 'net/ssh'
 
 # The range is 
@@ -9,18 +11,18 @@ if ARGV.length != 5
   puts "       connection. Than connect to it and execute"
   puts "       the socks server"
   puts ""
-  puts "Example: #{$0} 131.114.11.85-255 foobar 8000 'Documents/3proxy-0.6.1/src/socks -p8080 -l' proxylist"
+  puts "Example: #{$0} 131.114.11.85-255 foobar 8000 'screen Documents/3proxy-0.6.1/src/socks -p8080 -l' proxylist"
   exit
 end
 
 threads = []
 sessions = []
 
-range = $ARGV[0]
-uname = $ARGV[1]
-cport = $ARGV[2].to_i
-cmd   = $ARGV[3]
-file  = $ARGV[4]
+range = ARGV[0]
+uname = ARGV[1]
+cport = ARGV[2].to_i
+cmd   = ARGV[3]
+file  = ARGV[4]
 
 File.open(file, 'w+') do |f|
   `nmap -p 22 --open -oG - #{range} -Pn | grep ssh`.each_line do |line|

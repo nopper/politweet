@@ -1,7 +1,6 @@
 import time
-import socks
 from random import choice
-from httplib2 import Http, ProxyInfo
+from urllib2 import urlopen, Request
 
 # Also ncsa-mosaic for the lulz
 AGENTS="""Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10.5; en-US; rv:1.9.1b3) Gecko/20090305 Firefox/3.1b3 GTB5
@@ -80,75 +79,12 @@ NCSA_Mosaic/3.0 (Windows 95)
 NCSA_Mosaic/2.6 (X11; SunOS 4.1.3 sun4m)
 NCSA Mosaic/1.0 (X11;SunOS 4.1.4 sun4m)"""
 
-# The list of HTTP proxy will contain something similar
-# 2:3600:socks5:9050:localhost
-# 2 = maximum requests
-# 3600 = time to wait up reached the threshold
-# socks5 = protocol
-# 9050 = port
-# then host
-
-class ServerInfo(object):
-    def __init__(self, ctime, maxreq, mtime, proto, port, host):
-        self.host = host.strip()
-        self.proto = proto
-        self.requests = 0
-        self.fails = 0
-
-        self.ctime  = int(ctime)
-        self.maxreq = int(maxreq)
-        self.mtime  = int(mtime)
-        self.port   = int(port)
-
-    def __cmp__(self, other):
-        return cmp(
-            (self.requests, self.mtime - self.ctime,
-             self.maxreq, self.mtime, self.fails),
-
-            (other.requests, other.mtime - other.ctime,
-             other.maxreq, self.mtime, self.fails)
-        )
-
-    def __repr__(self):
-        return "<{:s}>".format(str(self))
-
-    def __str__(self):
-        return "{:s}:{:d} ({:s})".format(self.host, self.port, self.proto)
-
 class Requester(object):
-    def __init__(self, flist, max_request=10, max_attempt=3):
-        self.servers = []
-        self.current = None
+    def __init__(self):
         self.agents = AGENTS.splitlines()
+        self.max_attempt = 3
 
-        self.invoker = None
-        self.current = None
-        self.cur_request = 0
-        self.max_request = max_request
-        self.max_attempt = max_attempt
-
-        self.selected = []
-        self.selection = []
-
-        print("Loading proxies:")
-
-        for line in open(flist).readlines():
-            ctime, maxreq, mtime, proto, port, host = line.split(':', 5)
-
-            info = ServerInfo(ctime, maxreq, mtime, proto, port, host)
-            self.servers.append(info)
-            self.selection.append(info)
-
-            print(" => {:s}".format(str(info)))
-
-        print("{:d} proxies loaded.".format(len(self.servers)))
-        print("{:d} user agents loaded.".format(len(self.agents)))
-
-    ###
-
-    def req(self, url, meth, callback, headers=None):
-        invoker = self.get_invoker()
-
+    def request(self, url, meth='GET', headers=None):
         if headers is None:
             headers = {}
 
@@ -159,27 +95,31 @@ class Requester(object):
 
         while True:
             try:
-                response, content = invoker.request(url, meth, headers=headers)
+                response = urlopen(Request(url, headers=headers))
+
+                content = response.read()
+                headers = response.info()
 
                 # Let's try to respect the limits
+                if headers.getheader('x-ratelimit-limit') and \
+                   headers.getheader('x-ratelimit-remaining'):
 
-                if 'x-ratelimit-limit' in response and \
-                   'x-ratelimit-remaining' in response:
-                    maxreq = int(response['x-ratelimit-limit'])
-                    remain = int(response['x-ratelimit-remaining'])
+                    remain = int(headers.getheader('x-ratelimit-remaining'))
 
-                    self.current.requests = maxreq - remain
-                    self.current.maxreq = maxreq
+                    if response.code == 400 and remain == 0:
 
-                    if response['status'] == '400' and remain == 0:
-                        print("Ratelimit met. Cycling next proxy")
-                        invoker = self.get_invoker()
+                        reset = int(headers.getheader('x-ratelimit-reset'))
+                        diff = max(reset - int(time.time()) + 1, 0)
+
+                        print("Waiting {:d} sec for ban.".format(diff))
+                        time.sleep(diff)
+
                         continue
 
-                if 'x-ratelimit-reset' in response:
-                    reset = int(response['x-ratelimit-reset'])
-                    diff = max(reset - time.time(), 0)
-                    self.current.mtime = diff
+                if response.code == 502:
+                    print("Twitter overblasted. Waiting 0.2 sec")
+                    time.sleep(0.2)
+                    continue
 
                 return response, content
             except Exception, exc:
@@ -191,93 +131,7 @@ class Requester(object):
                 time.sleep(2)
 
                 if attempt >= self.max_attempt:
-                    attempt = 0
-
-                    print("Marking {:s} proxy as saturated"
-                          .format(str(self.current)))
-
-                    self.current.requests = self.current.maxreq
-                    self.current.fails += 1
-
-                    invoker = self.get_invoker()
+                    print("Exception limit passed. Raising exception")
+                    raise exc
 
                 continue
-
-    def get_invoker(self, force_new=False):
-        if force_new:
-            print("New invoker required. Cycling next proxy")
-            return self.get_next_invoker()
-
-        if self.current:
-            balance_limit = self.cur_request > self.max_request
-            api_limit = self.current.requests >= self.current.maxreq
-
-            if balance_limit:
-                print("Balance Limit met. Cycling next proxy")
-                return self.get_next_invoker()
-            if api_limit:
-                print("API Limit met. Cycling next proxy")
-                return self.get_next_invoker()
-
-            self.current.ctime = time.time()
-            self.current.requests += 1
-            self.cur_request += 1
-
-            return self.invoker
-
-        return self.get_next_invoker()
-
-    def get_next_invoker(self):
-        if not self.selection:
-            self.selection = list(self.selected)
-            self.selected = []
-
-        self.selection.sort()
-        self.current = self.selection.pop(0)
-        self.selected.append(self.current)
-        self.cur_request = 0
-
-        tgt = self.current
-        print("Switching to {:s}".format(str(tgt)))
-
-        if tgt.requests >= tgt.maxreq:
-            diff = int(tgt.mtime - (time.time() - tgt.ctime))
-
-            if diff > 0:
-                print("Sleeping {:d} secs until expiration of ban"
-                      .format(diff))
-                time.sleep(diff + 1)
-                tgt.requests = 0
-
-        tgt.ctime = int(time.time())
-
-        # Create the invoker
-        if tgt.proto.lower() == 'socks5':
-            type = socks.PROXY_TYPE_SOCKS5
-        else:
-            type = socks.PROXY_TYPE_HTTP
-
-        self.invoker = Http(proxy_info=ProxyInfo(type, tgt.host, tgt.port))
-
-        return self.invoker
-
-    def save(self, flist):
-        f = open(flist, 'w+')
-        for server in self.servers:
-            f.write("%d:%d:%d:%s:%d:%s\n" % (
-                server.ctime,
-                server.maxreq,
-                server.mtime,
-                server.proto,
-                server.port,
-                server.host
-            ))
-        f.close()
-
-if __name__ == "__main__":
-    def call(response, content):
-        print response
-        print content
-
-    r = Requester("proxylist")
-    r.req("http://www.google.it", 'GET', call)

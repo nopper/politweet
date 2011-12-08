@@ -1,3 +1,5 @@
+#!/usr/bin/env ruby
+
 require 'net/ssh'
 
 if ARGV.length != 2
