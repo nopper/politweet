@@ -82,7 +82,7 @@ NCSA Mosaic/1.0 (X11;SunOS 4.1.4 sun4m)"""
 class Requester(object):
     def __init__(self):
         self.agents = AGENTS.splitlines()
-        self.max_attempt = 3
+        self.max_attempt = 20
 
     def request(self, url, meth='GET', headers=None):
         if headers is None:
@@ -125,10 +125,10 @@ class Requester(object):
             except Exception, exc:
                 attempt += 1
 
-                print("[{:d}/{:d}] Ignoring exception {:s}: waiting 2 secs " \
+                print("[{:d}/{:d}] Ignoring exception {:s}: waiting 3 secs " \
                       "before next attempt".format(attempt, self.max_attempt,
                       str(exc)))
-                time.sleep(2)
+                time.sleep(3)
 
                 if attempt >= self.max_attempt:
                     print("Exception limit passed. Raising exception")
