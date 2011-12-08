@@ -123,7 +123,7 @@ class Requester(object):
 
                 if response.code == 502:
                     print("Twitter overblasted. Waiting 0.2 sec")
-                    time.sleep(0.2)
+                    time.sleep(3)
                     continue
 
                 return response, content
