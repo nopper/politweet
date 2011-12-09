@@ -1,6 +1,6 @@
 import time
 from random import choice
-from urllib2 import urlopen, Request, HTTPError
+from httplib2 import Http
 
 # Also ncsa-mosaic for the lulz
 AGENTS="""Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10.5; en-US; rv:1.9.1b3) Gecko/20090305 Firefox/3.1b3 GTB5
@@ -83,6 +83,7 @@ class Requester(object):
     def __init__(self):
         self.agents = AGENTS.splitlines()
         self.max_attempt = 20
+        self.invoker = Http()
 
     def request(self, url, meth='GET', headers=None):
         if headers is None:
@@ -95,25 +96,19 @@ class Requester(object):
 
         while True:
             try:
-                try:
-                    response = urlopen(Request(url, headers=headers))
+                response, content = \
+                    self.invoker.request(url, meth, headers=headers)
 
-                    content = response.read()
-                    headers = response.info()
-
-                except HTTPError, response:
-                    content = response.read()
-                    headers = response.info()
+                time.sleep(5)
 
                 # Let's try to respect the limits
-                if headers.getheader('x-ratelimit-limit') and \
-                   headers.getheader('x-ratelimit-remaining'):
+                if 'x-ratelimit-limit' in response and \
+                   'x-ratelimit-remaining' in response:
+                    remain = int(response['x-ratelimit-remaining'])
 
-                    remain = int(headers.getheader('x-ratelimit-remaining'))
+                    if response['status'] == '400' and remain == 0:
 
-                    if response.code == 400 and remain == 0:
-
-                        reset = int(headers.getheader('x-ratelimit-reset'))
+                        reset = int(response['x-ratelimit-reset'])
                         diff = max(reset - int(time.time()) + 1, 0)
 
                         print("Waiting {:d} sec for ban.".format(diff))
@@ -121,19 +116,19 @@ class Requester(object):
 
                         continue
 
-                if response.code == 502:
-                    print("Twitter overblasted. Waiting 0.2 sec")
-                    time.sleep(3)
+                if response['status'] == '502':
+                    print("Twitter overblasted. Waiting 10 sec")
+                    time.sleep(10)
                     continue
 
                 return response, content
             except Exception, exc:
                 attempt += 1
 
-                print("[{:d}/{:d}] Ignoring exception {:s}: waiting 3 secs " \
+                print("[{:d}/{:d}] Ignoring exception {:s}: waiting {:d} secs " \
                       "before next attempt".format(attempt, self.max_attempt,
-                      str(exc)))
-                time.sleep(3)
+                      str(exc), 10 * attempt))
+                time.sleep(10 * attempt)
 
                 if attempt >= self.max_attempt:
                     print("Exception limit passed. Raising exception")

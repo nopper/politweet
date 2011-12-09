@@ -26,12 +26,15 @@ class TweetDumper(object):
                 self.current += 1
                 self.dump(self.userlist[0], 1)
                 self.userlist.pop(0)
+                self.save_progress()
         finally:
             self.save_progress()
+            self.close_dump()
 
-    def save_progress(self):
+    def close_dump(self):
         self.dumpfile.close()
 
+    def save_progress(self):
         f = open(self.filename, "w")
         for i in self.userlist:
             f.write(str(i) + "\n")
@@ -62,9 +65,16 @@ class TweetDumper(object):
                     url.format(page, politician)
                 )
 
-                collection = json.loads(content)
+                if response['status'] == '401':
+                    break
 
-                if response.code == 401 or len(collection) == 0:
+                try:
+                    collection = json.loads(content)
+                except:
+                    print "Error decoding json", response['status']
+                    continue
+
+                if len(collection) == 0:
                     break
 
                 self.dumpfile.write(content + "\n")
